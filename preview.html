@@ -3,18 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🐱 魚店怪盜：九命貓版</title>
+<title>🐱 魚店怪盜：異常市場版</title>
 
 <style>
+
+*{
+    box-sizing:border-box;
+}
+
 body{
     margin:0;
     background:#f8f3e6;
+    color:#222;
     font-family:Arial,sans-serif;
     text-align:center;
+    overflow:hidden;
+    transition:all 1s;
 }
 
 h1{
-    margin:10px;
+    margin:10px 0;
 }
 
 #ui{
@@ -29,15 +37,78 @@ canvas{
 }
 
 #message{
-    font-size:28px;
+    margin-top:15px;
+    font-size:24px;
     font-weight:bold;
-    margin-top:10px;
 }
+
+#endingBook{
+    position:fixed;
+    right:10px;
+    top:10px;
+    width:220px;
+    max-height:300px;
+    overflow:auto;
+    background:rgba(255,255,255,.9);
+    border:2px solid #333;
+    border-radius:10px;
+    padding:10px;
+    text-align:left;
+}
+
+#endingBook h3{
+    margin:0 0 8px 0;
+}
+
+.ending{
+    font-size:14px;
+    margin:4px 0;
+}
+
+.glitch{
+    animation:flicker .15s infinite;
+}
+
+@keyframes flicker{
+    0%{opacity:1;}
+    50%{opacity:.75;}
+    100%{opacity:1;}
+}
+
+.redScreen{
+    background:#120000 !important;
+    color:#ff4d4d !important;
+}
+
+.blackScreen{
+    background:black !important;
+    color:white !important;
+}
+
+.grayScreen{
+    filter:grayscale(100%);
+}
+
+.eye{
+    font-size:80px;
+    animation:flicker .3s infinite;
+}
+
+.warning{
+    color:red;
+    font-size:40px;
+}
+
+.small{
+    font-size:18px;
+}
+
 </style>
 </head>
+
 <body>
 
-<h1>🐱 魚店怪盜：九命貓版</h1>
+<h1>🐱 魚店怪盜：異常市場版</h1>
 
 <div id="ui">
 🐱 九條命：
@@ -49,15 +120,18 @@ canvas{
 <span id="score">0</span>
 </div>
 
-<canvas id="game" width="600" height="400"></canvas>
+<canvas id="game" width="700" height="450"></canvas>
 
 <div id="message"></div>
 
-<p>
-使用 ⬅️➡️⬆️⬇️ 移動貓咪<br>
-偷魚賺分，小心不要被老闆抓到！
-</p>
+<div id="endingBook">
+<h3>📖 結局圖鑑</h3>
 
+<div id="bookContent">
+？？？
+</div>
+
+</div>
 <script>
 
 const canvas = document.getElementById("game");
@@ -67,33 +141,48 @@ let score = 0;
 let lives = 9;
 let gameOver = false;
 
+const unlockedEndings = new Set();
+
+const endingNames = [
+"👁️ 未知注視",
+"📺 錯誤分數",
+"👨‍🍳 監視之眼",
+"📡 訊號干擾",
+"🧍 第二個老闆",
+"❓ 你確定嗎",
+"⚫ 灰色市場",
+"👁️ 監視者",
+"💻 系統資訊",
+"⚠️ 不要繼續",
+"👑 魚王"
+];
+
 const cat = {
     x:100,
     y:100,
-    size:30,
     speed:5
 };
 
 const owner = {
-    x:500,
+    x:550,
     y:250,
-    size:35,
     speed:1.8
 };
 
-let fish = spawnFish();
+let fakeOwner = null;
 
 function spawnFish(){
     return {
-        x:Math.random() * 540 + 20,
-        y:Math.random() * 340 + 20,
-        size:20
+        x:Math.random()*620+20,
+        y:Math.random()*370+20
     };
 }
 
+let fish = spawnFish();
+
 function updateLives(){
     document.getElementById("lives").textContent =
-        "❤️".repeat(lives);
+        "❤️".repeat(Math.max(0,lives));
 }
 
 updateLives();
@@ -104,8 +193,12 @@ document.addEventListener("keydown",(e)=>{
 
     keys[e.key] = true;
 
-    if(gameOver && (e.key === "r" || e.key === "R")){
-        restart();
+    if(gameOver){
+
+        if(e.key==="r" || e.key==="R"){
+            restart();
+        }
+
     }
 
 });
@@ -114,128 +207,457 @@ document.addEventListener("keyup",(e)=>{
     keys[e.key] = false;
 });
 
+function updateBook(){
+
+    const box = document.getElementById("bookContent");
+
+    let html = "";
+
+    endingNames.forEach((name,index)=>{
+
+        if(unlockedEndings.has(index)){
+            html += `<div class="ending">✅ ${name}</div>`;
+        }else{
+            html += `<div class="ending">❌ ???</div>`;
+        }
+
+    });
+
+    box.innerHTML = html;
+}
+
+updateBook();
+
 function update(){
 
     if(gameOver) return;
 
-    // 玩家移動
     if(keys["ArrowLeft"]) cat.x -= cat.speed;
     if(keys["ArrowRight"]) cat.x += cat.speed;
     if(keys["ArrowUp"]) cat.y -= cat.speed;
     if(keys["ArrowDown"]) cat.y += cat.speed;
 
-    cat.x = Math.max(0, Math.min(canvas.width - cat.size, cat.x));
-    cat.y = Math.max(0, Math.min(canvas.height - cat.size, cat.y));
+    cat.x = Math.max(0,Math.min(canvas.width-40,cat.x));
+    cat.y = Math.max(0,Math.min(canvas.height-40,cat.y));
 
-    // 老闆追蹤
-    let dx = cat.x - owner.x;
-    let dy = cat.y - owner.y;
+    let dx = cat.x-owner.x;
+    let dy = cat.y-owner.y;
 
-    let dist = Math.hypot(dx, dy);
+    let dist = Math.hypot(dx,dy);
 
-    if(dist > 0){
-        owner.x += (dx / dist) * owner.speed;
-        owner.y += (dy / dist) * owner.speed;
+    if(dist>0){
+
+        owner.x += dx/dist*owner.speed;
+        owner.y += dy/dist*owner.speed;
+
     }
 
     // 吃魚
+
     if(
-        Math.abs(cat.x - fish.x) < 25 &&
-        Math.abs(cat.y - fish.y) < 25
+        Math.abs(cat.x-fish.x)<25 &&
+        Math.abs(cat.y-fish.y)<25
     ){
+
         score++;
 
         document.getElementById("score").textContent = score;
 
         fish = spawnFish();
+
     }
 
-    // 撞到老闆
+    // 撞老闆
+
     if(
-        Math.abs(cat.x - owner.x) < 25 &&
-        Math.abs(cat.y - owner.y) < 25
+        Math.abs(cat.x-owner.x)<25 &&
+        Math.abs(cat.y-owner.y)<25
     ){
 
         lives--;
+
         updateLives();
 
         cat.x = 100;
         cat.y = 100;
 
-        owner.x = 500;
+        owner.x = 550;
         owner.y = 250;
 
-        if(lives <= 0){
+        if(lives<=0){
 
             gameOver = true;
 
-            let rank = "";
+            showEnding();
 
-            if(score < 10){
-                rank = "😺 新手小貓";
-            }
-            else if(score < 30){
-                rank = "🐾 職業偷魚貓";
-            }
-            else{
-                rank = "👑 傳說魚王";
-            }
-
-            document.getElementById("message").innerHTML =
-            `
-            😿 九條命用完了！<br><br>
-            偷到 ${score} 條魚<br>
-            稱號：${rank}<br><br>
-            按 R 重新開始
-            `;
         }
+
     }
+
 }
 
 function draw(){
 
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    // 魚
-    ctx.font = "28px Arial";
-    ctx.fillText("🐟", fish.x, fish.y);
+    ctx.font="34px Arial";
+    ctx.fillText("🐟",fish.x,fish.y);
 
-    // 貓
-    ctx.font = "36px Arial";
-    ctx.fillText("🐱", cat.x, cat.y);
+    ctx.font="42px Arial";
+    ctx.fillText("🐱",cat.x,cat.y);
 
-    // 老闆
-    ctx.font = "36px Arial";
-    ctx.fillText("👨‍🍳", owner.x, owner.y);
+    ctx.font="42px Arial";
+    ctx.fillText("👨‍🍳",owner.x,owner.y);
+
+    if(fakeOwner){
+
+        ctx.font="42px Arial";
+        ctx.fillText("🧍",fakeOwner.x,fakeOwner.y);
+
+    }
+
 }
 
 function gameLoop(){
+
     update();
     draw();
+
     requestAnimationFrame(gameLoop);
+
 }
 
 function restart(){
 
+    gameOver = false;
+
     score = 0;
     lives = 9;
-    gameOver = false;
+
+    document.body.className = "";
+
+    fakeOwner = null;
 
     cat.x = 100;
     cat.y = 100;
 
-    owner.x = 500;
+    owner.x = 550;
     owner.y = 250;
 
     fish = spawnFish();
 
     document.getElementById("score").textContent = score;
+
     document.getElementById("message").innerHTML = "";
 
     updateLives();
+
 }
 
 gameLoop();
+    function showEnding(){
+
+    let endingId = Math.min(Math.floor(score / 5), 10);
+
+    unlockedEndings.add(endingId);
+
+    updateBook();
+
+    let msg = "";
+
+    switch(endingId){
+
+        case 0:
+
+            document.body.className = "blackScreen glitch";
+
+            msg = `
+            <div class="eye">👁️</div>
+
+            <div class="warning">
+            牠已經注意到你了
+            </div>
+
+            <br>
+
+            你只偷到了 ${score} 條魚。
+
+            <br><br>
+
+            角落裡似乎有東西正在看著你。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 1:
+
+            document.body.className = "blackScreen";
+
+            msg = `
+            <div class="warning">
+            📺 錯誤
+            </div>
+
+            <br>
+
+            系統顯示你的分數是：
+
+            <br><br>
+
+            ${score}
+
+            <br><br>
+
+            但另一個數字顯示：
+
+            <br><br>
+
+            999999
+
+            <br><br>
+
+            哪個才是真的？
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 2:
+
+            document.body.className = "redScreen";
+
+            msg = `
+            <div class="eye">👁️</div>
+
+            <br>
+
+            老闆的眼睛不太對勁。
+
+            <br>
+
+            他似乎一直知道你在哪。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 3:
+
+            document.body.className = "blackScreen glitch";
+
+            msg = `
+            📡 訊號干擾
+
+            <br><br>
+
+            畫面開始閃爍。
+
+            <br>
+
+            魚市場的位置似乎不存在於地圖上。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 4:
+
+            document.body.className = "";
+
+            fakeOwner = {
+                x:200,
+                y:180
+            };
+
+            msg = `
+            🧍 第二個老闆
+
+            <br><br>
+
+            你回頭時。
+
+            <br>
+
+            看見另一個老闆站在遠處。
+
+            <br>
+
+            但你不記得他是什麼時候出現的。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 5:
+
+            document.body.className = "grayScreen";
+
+            msg = `
+            ❓ 你確定嗎？
+
+            <br><br>
+
+            你真的在偷魚嗎？
+
+            <br>
+
+            還是魚一直在接近你？
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 6:
+
+            document.body.className = "grayScreen";
+
+            msg = `
+            ⚫ 灰色市場
+
+            <br><br>
+
+            整個市場失去了顏色。
+
+            <br>
+
+            除了那條魚。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 7:
+
+            document.body.className = "blackScreen";
+
+            msg = `
+            👁️ 監視者
+
+            <br><br>
+
+            老闆並不是老闆。
+
+            <br>
+
+            他只是監視者。
+
+            <br>
+
+            真正的管理者還沒出現。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 8:
+
+            document.body.className = "blackScreen";
+
+            msg = `
+            💻 系統資訊
+
+            <br><br>
+
+            玩家：CAT
+
+            <br>
+
+            狀態：已標記
+
+            <br>
+
+            位置：已知
+
+            <br>
+
+            觀察中...
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 9:
+
+            document.body.className = "redScreen glitch";
+
+            msg = `
+            ⚠️ 不要再繼續了
+
+            <br><br>
+
+            市場深處有東西正在醒來。
+
+            <br>
+
+            你還有機會離開。
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+        case 10:
+
+            document.body.className = "blackScreen";
+
+            msg = `
+            <div class="eye">👁️</div>
+
+            <div class="warning">
+            👑 魚王
+            </div>
+
+            <br>
+
+            恭喜。
+
+            <br>
+
+            你收集了超過 50 條魚。
+
+            <br><br>
+
+            魚市場接受了你。
+
+            <br>
+
+            現在由你負責監視下一隻貓。
+
+            <br><br>
+
+            真結局達成
+
+            <br><br>
+
+            按 R 重新開始
+            `;
+            break;
+
+    }
+
+    document.getElementById("message").innerHTML = msg;
+
+}
 
 </script>
 
